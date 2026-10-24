@@ -14,6 +14,11 @@ locals {
   cloud_init_config = {
     ssh_pwauth = true
 
+    # JupyterHub lauscht auf [::] und erreicht seinen Proxy dann ueber den
+    # Hostnamen der VM. Der muss sich aufloesen lassen, sonst startet der Hub
+    # nicht ("Name or service not known").
+    manage_etc_hosts = "localhost"
+
     # Linux-Gruppen je Team (Namen aus local.group_names in main.tofu)
     groups = local.unique_groups
 
@@ -62,10 +67,12 @@ locals {
         },
       ],
       # ip_mode = dual: die IPv4-Schnittstelle, die OpenTofu nach dem Boot
-      # anhaengt. Ihre DHCP-Routen gehen in eine eigene Tabelle, und nur
-      # Pakete mit ihrer Adresse als Absender nehmen diese Tabelle. Sonst
-      # gingen Antworten ueber die Hauptschnittstelle hinaus, und Neutrons
-      # Port-Security verwirft sie als gefaelschten Absender.
+      # anhaengt. Ihre Default-Route ueber das Gateway des IPv4-Netzes steht
+      # in einer eigenen Tabelle, und nur Pakete mit ihrer Adresse als
+      # Absender nehmen diese Tabelle. Sonst gingen Antworten ueber die
+      # Hauptschnittstelle hinaus, und Neutrons Port-Security verwirft sie
+      # als gefaelschten Absender. Gleiches Muster wie der Staging-Aufbau
+      # im deployment-Repo.
       local.dual ? [
         {
           path        = "/etc/netplan/60-secondary-ipv4.yaml"
@@ -79,7 +86,8 @@ locals {
                   dhcp4           = true
                   dhcp6           = false
                   accept-ra       = false
-                  dhcp4-overrides = { route-table = 100 }
+                  dhcp4-overrides = { use-routes = false }
+                  routes          = [{ to = "default", via = local.secondary_gateway, table = 100 }]
                   routing-policy  = [{ from = local.secondary_ipv4, table = 100 }]
                 }
               }
